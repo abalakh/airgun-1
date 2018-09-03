@@ -29,6 +29,24 @@ class ContentViewEntity(BaseEntity):
     def delete(self, entity_name):
         """Delete existing content view"""
         view = self.navigate_to(self, 'Delete', entity_name=entity_name)
+        if view.conflicts_present:
+            raise AssertionError(
+                'Unable to delete content view. Following conflicts are'
+                'present: {}'.format(view.table.read())
+            )
+        view.remove.click()
+        view.flash.assert_no_error()
+        view.flash.dismiss()
+
+    def copy(self, entity_name, new_name):
+        """Make a copy of existing content view"""
+        view = self.navigate_to(self, 'Copy', entity_name=entity_name)
+        view.new_name.fill(new_name)
+        view.create.click()
+        view.flash.assert_no_error()
+        view.flash.dismiss()
+        """Delete existing content view"""
+        view = self.navigate_to(self, 'Delete', entity_name=entity_name)
         assert not view.conflicts_present, (
             'Unable to delete content view. '
             'Following conflicts are present: {}'.format(view.table.read())
@@ -140,6 +158,65 @@ class ContentViewEntity(BaseEntity):
         view.flash.assert_no_error()
         view.flash.dismiss()
         return view.versions.table.row(version=version_name).read()
+
+    def read_version(self, entity_name, version_name):
+        """Read content view version values"""
+        view = self.navigate_to(
+            self, 'Version',
+            entity_name=entity_name,
+            version_name=version_name,
+        )
+        return view.read()
+
+    def search_version(self, entity_name, query):
+        """Search for content view version"""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        return view.versions.search(query)
+
+    def search_version_package(
+            self, entity_name, version_name, query, repo=None):
+        """Search for a package inside content view version
+
+        :param str optional repo: repository name to filter by
+        """
+        view = self.navigate_to(
+            self, 'Version',
+            entity_name=entity_name,
+            version_name=version_name,
+        )
+        return view.rpm_packages.search(query, repo=repo)
+
+    def remove_version(self, entity_name, version_name, completely=True,
+                       lces=None):
+        """Remove content view version.
+
+        :param bool completely: complete content view version removal if True
+            or removal from all lifecycle environments otherwise
+        :param list optional lces: list of lifecycle environment names to
+            select on content view version removal screen
+        """
+        view = self.navigate_to(
+            self, 'Remove Version',
+            entity_name=entity_name,
+            version_name=version_name,
+        )
+        if lces:
+            for row in view.table.rows():
+                if 'ng-hide' in self.browser.classes(row):
+                    # workaround for non-standard table with rows being present
+                    # in DOM with 'ng-hide' class
+                    continue
+                row[0].widget.fill(row['Name'].text in lces)
+        view.completely.fill(completely)
+        view.next.click()
+        view = ContentViewVersionRemoveConfirmationView(self.browser)
+        view.confirm_remove.click()
+        view.flash.assert_no_error()
+        view.flash.dismiss()
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.versions.search(version_name)
+        view.versions.table.row(
+            version=version_name)['Status'].widget.wait_for_result()
 
     def read_version(self, entity_name, version_name):
         """Read content view version values"""
